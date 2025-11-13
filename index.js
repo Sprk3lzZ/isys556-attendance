@@ -111,14 +111,22 @@ app.post('/checkin', authMiddleware, (req, res) => {
   }
 
   const userId = req.userId;
+
+  console.log('>>> CHECKIN reçu', {
+    userId,
+    tagId,
+    time: new Date().toISOString()
+  });
+
   db.run(
     'INSERT INTO presences (user_id, tag_id) VALUES (?, ?)',
     [userId, tagId],
     (err) => {
       if (err) {
-        console.error(err);
+        console.error('Erreur INSERT presences:', err);
         return res.status(500).json({ error: 'DB error' });
       }
+      console.log('>>> CHECKIN enregistré OK pour user', userId, 'tag', tagId);
       res.json({ status: 'ok' });
     }
   );
@@ -167,3 +175,24 @@ app.post('/admin/create-user', (req, res) => {
       res.json(rows);
     });
   });
+
+  // toutes les présences sans JOIN
+app.get('/presences_raw', (req, res) => {
+  db.all('SELECT * FROM presences ORDER BY created_at DESC', (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
+
+// presences + usernames (JOIN)
+app.get('/presences', (req, res) => {
+  db.all(`
+    SELECT p.id, p.user_id, u.username, p.tag_id, p.created_at
+    FROM presences p
+    LEFT JOIN users u ON u.id = p.user_id
+    ORDER BY p.created_at DESC
+  `, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
