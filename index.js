@@ -194,9 +194,9 @@ app.post('/admin/create-user', (req, res) => {
 
   app.get('/presences', (req, res) => {
     db.all(`
-      SELECT p.id, u.username, p.tag_id, p.created_at
+      SELECT p.id, p.user_id, u.username, p.tag_id, p.created_at
       FROM presences p
-      JOIN users u ON u.id = p.user_id
+      LEFT JOIN users u ON u.id = p.user_id
       ORDER BY p.created_at DESC
     `, (err, rows) => {
       if (err) return res.status(500).json({ error: 'DB error' });
@@ -207,19 +207,6 @@ app.post('/admin/create-user', (req, res) => {
   // toutes les présences sans JOIN
 app.get('/presences_raw', (req, res) => {
   db.all('SELECT * FROM presences ORDER BY created_at DESC', (err, rows) => {
-    if (err) return res.status(500).json({ error: 'DB error' });
-    res.json(rows);
-  });
-});
-
-// presences + usernames (JOIN)
-app.get('/presences', (req, res) => {
-  db.all(`
-    SELECT p.id, p.user_id, u.username, p.tag_id, p.created_at
-    FROM presences p
-    LEFT JOIN users u ON u.id = p.user_id
-    ORDER BY p.created_at DESC
-  `, (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     res.json(rows);
   });
