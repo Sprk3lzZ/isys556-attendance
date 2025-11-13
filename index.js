@@ -318,3 +318,89 @@ app.get('/attendance/today', (req, res) => {
     }
   );
 });
+
+// Route pour réinitialiser toutes les présences
+app.post('/admin/reset-presences', (req, res) => {
+  const { secret } = req.body || {};
+  if (secret !== process.env.ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  db.run('DELETE FROM presences', (err) => {
+    if (err) {
+      console.error('Erreur DELETE presences:', err);
+      return res.status(500).json({ error: 'DB error' });
+    }
+    res.json({ status: 'ok', message: 'All presences reset' });
+  });
+});
+
+// Route pour toggle la présence d'un étudiant (admin)
+app.post('/admin/toggle-presence', (req, res) => {
+  const { secret, username } = req.body || {};
+  if (secret !== process.env.ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (!username) {
+    return res.status(400).json({ error: 'Missing username' });
+  }
+
+  // Récupérer l'ID de l'utilisateur
+  db.get('SELECT id FROM users WHERE username = ?', [username], (err, user) => {
+    if (err) {
+      console.error('Erreur SELECT user:', err);
+      return res.status(500).json({ error: 'DB error' });
+    }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userId = user.id;
+    const tagId = 'manual'; // Tag par défaut pour les toggles manuels
+
+    // Vérifier si déjà présent aujourd'hui (n'importe quel tagId)
+    db.get(
+      `
+      SELECT id FROM presences
+      WHERE user_id = ?
+        AND DATE(created_at) = DATE('now', 'localtime')
+      LIMIT 1
+      `,
+      [userId],
+      (err2, row) => {
+        if (err2) {
+          console.error('Erreur SELECT presences:', err2);
+          return res.status(500).json({ error: 'DB error' });
+        }
+
+        if (row) {
+          // Déjà présent, on supprime toutes les présences d'aujourd'hui (toggle vers absent)
+          db.run(
+            'DELETE FROM presences WHERE user_id = ? AND DATE(created_at) = DATE("now", "localtime")',
+            [userId],
+            (err3) => {
+              if (err3) {
+                console.error('Erreur DELETE presences:', err3);
+                return res.status(500).json({ error: 'DB error' });
+              }
+              return res.json({ status: 'ok', present: false });
+            }
+          );
+        } else {
+          // Pas présent, on ajoute (toggle vers présent)
+          db.run(
+            'INSERT INTO presences (user_id, tag_id) VALUES (?, ?)',
+            [userId, tagId],
+            (err4) => {
+              if (err4) {
+                console.error('Erreur INSERT presences:', err4);
+                return res.status(500).json({ error: 'DB error' });
+              }
+              return res.json({ status: 'ok', present: true });
+            }
+          );
+        }
+      }
+    );
+  });
+});

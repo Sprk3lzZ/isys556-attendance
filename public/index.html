@@ -65,6 +65,13 @@
       border-radius: 9999px;
       font-size: 0.8rem;
       font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .status-pill:hover {
+      opacity: 0.8;
+      transform: scale(1.05);
     }
     .status-present {
       background: rgba(22, 163, 74, 0.15);
@@ -106,6 +113,25 @@
       margin-bottom: 12px;
       font-size: 0.9rem;
       color: #9ca3af;
+    }
+    .reset-btn {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      margin-top: 12px;
+    }
+    .reset-btn:hover {
+      background: rgba(239, 68, 68, 0.25);
+      transform: translateY(-1px);
+    }
+    .reset-btn:active {
+      transform: translateY(0);
     }
     .error {
       margin-top: 12px;
@@ -156,6 +182,7 @@
         </thead>
         <tbody></tbody>
       </table>
+      <button id="resetBtn" class="reset-btn" style="display:none;">Reset All Presences</button>
     </div>
   </div>
 
@@ -166,6 +193,19 @@
     const errorBox = document.getElementById('error');
     const dateLabel = document.getElementById('dateLabel');
     const countsLabel = document.getElementById('counts');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // Stocker le secret admin dans localStorage
+    let adminSecret = localStorage.getItem('adminSecret') || '';
+
+    function promptAdminSecret() {
+      const secret = prompt('Enter admin secret:');
+      if (secret) {
+        adminSecret = secret;
+        localStorage.setItem('adminSecret', secret);
+      }
+      return secret;
+    }
 
     function formatToday() {
       const d = new Date();
@@ -214,6 +254,50 @@
           span.classList.add('status-pill');
           span.classList.add(isPresent ? 'status-present' : 'status-absent');
           span.textContent = isPresent ? 'Present' : 'Absent';
+          
+          // Ajouter le toggle au clic
+          span.addEventListener('click', async () => {
+            if (!adminSecret) {
+              const secret = promptAdminSecret();
+              if (!secret) return;
+            }
+            
+            try {
+              const res = await fetch('/admin/toggle-presence', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ secret: adminSecret, username: s.username })
+              });
+              
+              if (!res.ok) {
+                if (res.status === 403) {
+                  // Secret invalide, demander à nouveau
+                  const newSecret = promptAdminSecret();
+                  if (!newSecret) return;
+                  // Réessayer avec le nouveau secret
+                  const retryRes = await fetch('/admin/toggle-presence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ secret: newSecret, username: s.username })
+                  });
+                  if (!retryRes.ok) {
+                    alert('Failed to toggle presence');
+                    return;
+                  }
+                } else {
+                  alert('Failed to toggle presence');
+                  return;
+                }
+              }
+              
+              // Recharger les données
+              await loadAttendance();
+            } catch (err) {
+              console.error(err);
+              alert('Error toggling presence');
+            }
+          });
+          
           tdStatus.appendChild(span);
 
           tr.appendChild(tdName);
@@ -229,6 +313,7 @@
         loader.style.display = 'none';
         errorBox.style.display = 'none';
         table.style.display = 'table';
+        resetBtn.style.display = 'block';
       } catch (err) {
         console.error(err);
         loader.style.display = 'none';
@@ -237,6 +322,54 @@
         errorBox.textContent = 'Failed to load data from the API.';
       }
     }
+
+    // Gestionnaire pour le bouton reset
+    resetBtn.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to reset ALL presences? This action cannot be undone.')) {
+        return;
+      }
+
+      if (!adminSecret) {
+        const secret = promptAdminSecret();
+        if (!secret) return;
+      }
+
+      try {
+        const res = await fetch('/admin/reset-presences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret: adminSecret })
+        });
+
+        if (!res.ok) {
+          if (res.status === 403) {
+            // Secret invalide, demander à nouveau
+            const newSecret = promptAdminSecret();
+            if (!newSecret) return;
+            // Réessayer avec le nouveau secret
+            const retryRes = await fetch('/admin/reset-presences', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ secret: newSecret })
+            });
+            if (!retryRes.ok) {
+              alert('Failed to reset presences');
+              return;
+            }
+          } else {
+            alert('Failed to reset presences');
+            return;
+          }
+        }
+
+        // Recharger les données
+        await loadAttendance();
+        alert('All presences have been reset');
+      } catch (err) {
+        console.error(err);
+        alert('Error resetting presences');
+      }
+    });
 
     loadAttendance();
   </script>
