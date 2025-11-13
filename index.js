@@ -5,7 +5,7 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 
 // CONFIG
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
+const JWT_SECRET = process.env.JWT_SECRET || 'isys-556-210304';
 const PORT = process.env.PORT || 3000;
 
 const app = express();
@@ -132,3 +132,26 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+app.post('/admin/create-user', (req, res) => {
+    const { secret, username, password } = req.body || {};
+    if (secret !== process.env.ADMIN_SECRET) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Missing params' });
+    }
+  
+    const hash = bcrypt.hashSync(password, 10);
+    db.run(
+      'INSERT INTO users (username, password_hash) VALUES (?, ?)',
+      [username, hash],
+      (err) => {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ error: 'DB error' });
+        }
+        res.json({ status: 'user created' });
+      }
+    );
+  });
