@@ -155,3 +155,15 @@ app.post('/admin/create-user', (req, res) => {
       }
     );
   });
+
+  app.get('/presences', (req, res) => {
+    db.all(`
+      SELECT p.id, u.username, p.tag_id, p.created_at
+      FROM presences p
+      JOIN users u ON u.id = p.user_id
+      ORDER BY p.created_at DESC
+    `, (err, rows) => {
+      if (err) return res.status(500).json({ error: 'DB error' });
+      res.json(rows);
+    });
+  });
