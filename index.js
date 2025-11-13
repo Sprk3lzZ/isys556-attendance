@@ -196,3 +196,10 @@ app.get('/presences', (req, res) => {
     res.json(rows);
   });
 });
+
+app.get('/users', (req, res) => {
+  db.all('SELECT id, username FROM users', (err, rows) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    res.json(rows);
+  });
+});
