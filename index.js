@@ -45,17 +45,40 @@ app.use(express.static('public'));
 const DB_PATH = process.env.DB_PATH || './presence.db';
 const db = new sqlite3.Database(DB_PATH);
 
+// Helper function to extract first and last name from full name
+function parseName(fullName) {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: '' };
+  }
+  const firstName = parts[0];
+  const lastName = parts.slice(1).join(' ');
+  return { firstName, lastName };
+}
+
 function seedInitialStudents() {
   initialStudents.forEach((student) => {
     const hash = bcrypt.hashSync(student.password, 10);
+    const { firstName, lastName } = parseName(student.name);
     db.run(
-      'INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)',
-      [student.username, hash],
+      'INSERT OR IGNORE INTO users (username, password_hash, first_name, last_name) VALUES (?, ?, ?, ?)',
+      [student.username, hash, firstName, lastName],
       (err) => {
         if (err) {
           console.error('Erreur création user', student.username, err.message);
         } else {
-          console.log('User ok :', student.username);
+          // Update existing users with first_name and last_name if they were created before
+          db.run(
+            'UPDATE users SET first_name = ?, last_name = ? WHERE username = ? AND (first_name IS NULL OR last_name IS NULL)',
+            [firstName, lastName, student.username],
+            (updateErr) => {
+              if (updateErr) {
+                console.error('Erreur mise à jour user', student.username, updateErr.message);
+              } else {
+                console.log('User ok :', student.username);
+              }
+            }
+          );
         }
       }
     );
@@ -68,9 +91,24 @@ db.serialize(() => {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL
+      password_hash TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT
     )
   `);
+
+  // Add first_name and last_name columns if they don't exist (for existing databases)
+  db.run(`ALTER TABLE users ADD COLUMN first_name TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding first_name column:', err.message);
+    }
+  });
+
+  db.run(`ALTER TABLE users ADD COLUMN last_name TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding last_name column:', err.message);
+    }
+  });
 
   db.run(`
     CREATE TABLE IF NOT EXISTS presences (
@@ -147,7 +185,11 @@ app.post('/login', (req, res) => {
       }
 
       const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '90d' });
-      res.json({ token });
+      res.json({ 
+        token,
+        firstName: user.first_name || null,
+        lastName: user.last_name || null
+      });
     }
   );
 });
@@ -266,12 +308,24 @@ app.post('/admin/seed-students', (req, res) => {
 
   initialStudents.forEach((student) => {
     const hash = bcrypt.hashSync(student.password, 10);
+    const { firstName, lastName } = parseName(student.name);
     db.run(
-      'INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)',
-      [student.username, hash],
+      'INSERT OR IGNORE INTO users (username, password_hash, first_name, last_name) VALUES (?, ?, ?, ?)',
+      [student.username, hash, firstName, lastName],
       (err) => {
         if (err) {
           console.error('Erreur création user', student.username, err.message);
+        } else {
+          // Update existing users with first_name and last_name if they were created before
+          db.run(
+            'UPDATE users SET first_name = ?, last_name = ? WHERE username = ? AND (first_name IS NULL OR last_name IS NULL)',
+            [firstName, lastName, student.username],
+            (updateErr) => {
+              if (updateErr) {
+                console.error('Erreur mise à jour user', student.username, updateErr.message);
+              }
+            }
+          );
         }
       }
     );
@@ -333,6 +387,32 @@ app.post('/admin/reset-presences', (req, res) => {
     }
     res.json({ status: 'ok', message: 'All presences reset' });
   });
+});
+
+// Route /me - Get current user info
+app.get('/me', authMiddleware, (req, res) => {
+  const userId = req.userId;
+  
+  db.get(
+    'SELECT id, username, first_name, last_name FROM users WHERE id = ?',
+    [userId],
+    (err, user) => {
+      if (err) {
+        console.error('Erreur SELECT user:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      res.json({
+        id: user.id,
+        username: user.username,
+        firstName: user.first_name || null,
+        lastName: user.last_name || null
+      });
+    }
+  );
 });
 
 // Route pour toggle la présence d'un étudiant (admin)

@@ -29,6 +29,15 @@
       color: #9ca3af;
       margin-bottom: 16px;
     }
+    .welcome {
+      color: #e5e7eb;
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+    .welcome.hidden {
+      display: none;
+    }
     .card {
       background: #020617;
       border-radius: 12px;
@@ -159,6 +168,7 @@
 <body>
   <div class="container">
     <h1>Class Attendance</h1>
+    <div id="welcome" class="welcome hidden"></div>
     <div class="subtitle">
       NFC-based attendance. One check-in per student per day.
     </div>
@@ -194,9 +204,44 @@
     const dateLabel = document.getElementById('dateLabel');
     const countsLabel = document.getElementById('counts');
     const resetBtn = document.getElementById('resetBtn');
+    const welcomeDiv = document.getElementById('welcome');
 
-    // Stocker le secret admin dans localStorage
+    // Stocker le secret admin et le token dans localStorage
     let adminSecret = localStorage.getItem('adminSecret') || '';
+    let authToken = localStorage.getItem('authToken') || '';
+
+    // Fonction pour charger et afficher le nom de l'utilisateur
+    async function loadUserInfo() {
+      if (!authToken) {
+        welcomeDiv.classList.add('hidden');
+        return;
+      }
+
+      try {
+        const res = await fetch('/me', {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+
+        if (res.ok) {
+          const userInfo = await res.json();
+          const nameParts = userInfo.name.split(' ');
+          const firstName = nameParts[0];
+          const lastName = nameParts.slice(1).join(' ');
+          welcomeDiv.textContent = `Hi ${firstName} ${lastName}`;
+          welcomeDiv.classList.remove('hidden');
+        } else {
+          // Token invalide ou expiré
+          localStorage.removeItem('authToken');
+          authToken = '';
+          welcomeDiv.classList.add('hidden');
+        }
+      } catch (err) {
+        console.error('Error loading user info:', err);
+        welcomeDiv.classList.add('hidden');
+      }
+    }
 
     function promptAdminSecret() {
       const secret = prompt('Enter admin secret:');
@@ -218,6 +263,9 @@
     }
 
     dateLabel.textContent = `Today: ${formatToday()}`;
+
+    // Charger les infos utilisateur au chargement de la page
+    loadUserInfo();
 
     async function loadAttendance() {
       try {
