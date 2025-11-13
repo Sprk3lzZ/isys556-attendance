@@ -43,6 +43,23 @@ app.use(express.json());
 // DB SQLite
 const db = new sqlite3.Database('./presence.db');
 
+function seedInitialStudents() {
+  initialStudents.forEach((student) => {
+    const hash = bcrypt.hashSync(student.password, 10);
+    db.run(
+      'INSERT OR IGNORE INTO users (username, password_hash) VALUES (?, ?)',
+      [student.username, hash],
+      (err) => {
+        if (err) {
+          console.error('Erreur création user', student.username, err.message);
+        } else {
+          console.log('User ok :', student.username);
+        }
+      }
+    );
+  });
+}
+
 // Création des tables si elles n'existent pas
 db.serialize(() => {
   db.run(`
@@ -62,6 +79,8 @@ db.serialize(() => {
       FOREIGN KEY(user_id) REFERENCES users(id)
     )
   `);
+
+  seedInitialStudents();
 });
 
 // Helper pour créer un utilisateur (tu pourras appeler ça une fois au début)
