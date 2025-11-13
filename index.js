@@ -41,7 +41,8 @@ app.use(cors());
 app.use(express.json());
 
 // DB SQLite
-const db = new sqlite3.Database('./presence.db');
+const DB_PATH = process.env.DB_PATH || './presence.db';
+const db = new sqlite3.Database(DB_PATH);
 
 function seedInitialStudents() {
   initialStudents.forEach((student) => {
@@ -159,22 +160,38 @@ app.post('/checkin', authMiddleware, (req, res) => {
 
   const userId = req.userId;
 
-  console.log('>>> CHECKIN reçu', {
-    userId,
-    tagId,
-    time: new Date().toISOString()
-  });
-
-  db.run(
-    'INSERT INTO presences (user_id, tag_id) VALUES (?, ?)',
+  // 1) Vérifier si déjà checkin aujourd'hui sur ce tag
+  db.get(
+    `
+    SELECT id FROM presences
+    WHERE user_id = ?
+      AND tag_id = ?
+      AND DATE(created_at) = DATE('now', 'localtime')
+    `,
     [userId, tagId],
-    (err) => {
+    (err, row) => {
       if (err) {
-        console.error('Erreur INSERT presences:', err);
+        console.error('Erreur SELECT presences:', err);
         return res.status(500).json({ error: 'DB error' });
       }
-      console.log('>>> CHECKIN enregistré OK pour user', userId, 'tag', tagId);
-      res.json({ status: 'ok' });
+
+      if (row) {
+        // Déjà présent aujourd'hui
+        return res.status(409).json({ error: 'already_checked_in' });
+      }
+
+      // 2) Sinon, on insère la présence
+      db.run(
+        'INSERT INTO presences (user_id, tag_id) VALUES (?, ?)',
+        [userId, tagId],
+        (err2) => {
+          if (err2) {
+            console.error('Erreur INSERT presences:', err2);
+            return res.status(500).json({ error: 'DB error' });
+          }
+          return res.json({ status: 'ok' });
+        }
+      );
     }
   );
 });
