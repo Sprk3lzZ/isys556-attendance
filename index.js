@@ -39,6 +39,7 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
 // DB SQLite
 const DB_PATH = process.env.DB_PATH || './presence.db';
@@ -285,4 +286,35 @@ app.post('/admin/seed-students', (req, res) => {
     status: 'ok',
     users: created
   });
+});
+
+// Return list of students (name + username)
+app.get('/students', (req, res) => {
+  const students = initialStudents.map((s) => ({
+    name: s.name,
+    username: s.username
+  }));
+  res.json(students);
+});
+
+// Return usernames who have at least one check-in today
+app.get('/attendance/today', (req, res) => {
+  db.all(
+    `
+    SELECT u.username
+    FROM presences p
+    JOIN users u ON u.id = p.user_id
+    WHERE DATE(p.created_at) = DATE('now', 'localtime')
+    GROUP BY u.username
+    `,
+    (err, rows) => {
+      if (err) {
+        console.error('DB error in /attendance/today:', err);
+        return res.status(500).json({ error: 'DB error' });
+      }
+
+      const presentUsernames = rows.map((r) => r.username);
+      res.json({ presentUsernames });
+    }
+  );
 });

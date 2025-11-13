@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Class Attendance</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .container {
+      width: 100%;
+      max-width: 900px;
+      padding: 24px;
+    }
+    h1 {
+      margin-top: 0;
+      margin-bottom: 4px;
+      font-size: 2rem;
+    }
+    .subtitle {
+      color: #9ca3af;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: #020617;
+      border-radius: 12px;
+      padding: 16px 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.5);
+      border: 1px solid #1e293b;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead {
+      background: #0b1220;
+    }
+    th, td {
+      padding: 10px 8px;
+      text-align: left;
+      font-size: 0.95rem;
+    }
+    th {
+      color: #9ca3af;
+      border-bottom: 1px solid #1f2933;
+    }
+    tbody tr:nth-child(even) {
+      background: #020617;
+    }
+    tbody tr:nth-child(odd) {
+      background: #020617;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .status-present {
+      background: rgba(22, 163, 74, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.5);
+    }
+    .status-absent {
+      background: rgba(148, 163, 184, 0.15);
+      color: #e5e7eb;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+    }
+    .status-present::before,
+    .status-absent::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 9999px;
+      margin-right: 6px;
+    }
+    .status-present::before {
+      background: #22c55e;
+    }
+    .status-absent::before {
+      background: #64748b;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      background: #1e293b;
+      color: #e5e7eb;
+      margin-left: 6px;
+    }
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+      color: #9ca3af;
+    }
+    .error {
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fecaca;
+      font-size: 0.85rem;
+    }
+    .loader {
+      margin: 24px 0;
+      text-align: center;
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 640px) {
+      th:nth-child(2),
+      td:nth-child(2) {
+        display: none; /* hide username on very small screens */
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Class Attendance</h1>
+    <div class="subtitle">
+      NFC-based attendance. One check-in per student per day.
+    </div>
+
+    <div class="card">
+      <div class="meta">
+        <div id="dateLabel"></div>
+        <div id="counts"></div>
+      </div>
+
+      <div id="loader" class="loader">Loading attendance...</div>
+      <div id="error" class="error" style="display:none;"></div>
+
+      <table id="table" style="display:none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Username</th>
+            <th>Status (today)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const table = document.getElementById('table');
+    const tbody = table.querySelector('tbody');
+    const loader = document.getElementById('loader');
+    const errorBox = document.getElementById('error');
+    const dateLabel = document.getElementById('dateLabel');
+    const countsLabel = document.getElementById('counts');
+
+    function formatToday() {
+      const d = new Date();
+      return d.toLocaleDateString(undefined, {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    dateLabel.textContent = `Today: ${formatToday()}`;
+
+    async function loadAttendance() {
+      try {
+        // 1) Fetch students
+        const studentsRes = await fetch('/students');
+        if (!studentsRes.ok) throw new Error('Failed to load students');
+        const students = await studentsRes.json();
+
+        // 2) Fetch who is present today
+        const attRes = await fetch('/attendance/today');
+        if (!attRes.ok) throw new Error('Failed to load today attendance');
+        const { presentUsernames } = await attRes.json();
+
+        const presentSet = new Set(presentUsernames);
+
+        // 3) Build table rows
+        tbody.innerHTML = '';
+        let presentCount = 0;
+
+        students.forEach((s) => {
+          const isPresent = presentSet.has(s.username);
+          if (isPresent) presentCount++;
+
+          const tr = document.createElement('tr');
+
+          const tdName = document.createElement('td');
+          tdName.textContent = s.name;
+
+          const tdUser = document.createElement('td');
+          tdUser.textContent = s.username;
+
+          const tdStatus = document.createElement('td');
+          const span = document.createElement('span');
+          span.classList.add('status-pill');
+          span.classList.add(isPresent ? 'status-present' : 'status-absent');
+          span.textContent = isPresent ? 'Present' : 'Absent';
+          tdStatus.appendChild(span);
+
+          tr.appendChild(tdName);
+          tr.appendChild(tdUser);
+          tr.appendChild(tdStatus);
+
+          tbody.appendChild(tr);
+        });
+
+        const total = students.length;
+        countsLabel.innerHTML = `Present: <strong>${presentCount}</strong> / ${total}`;
+
+        loader.style.display = 'none';
+        errorBox.style.display = 'none';
+        table.style.display = 'table';
+      } catch (err) {
+        console.error(err);
+        loader.style.display = 'none';
+        table.style.display = 'none';
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'Failed to load data from the API.';
+      }
+    }
+
+    loadAttendance();
+  </script>
+</body>
+</html>
